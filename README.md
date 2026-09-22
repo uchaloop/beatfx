@@ -36,7 +36,7 @@ func main() {
         fx.Provide(func() (*job.Runner, error) {
             return job.MakeRunner(
                 job.Config{Timeout: 4 * time.Minute},
-                func(ctx context.Context) (int, error) {
+                func(ctx context.Context) (int64, error) {
                     // Replace with one batch of application work.
                     return 0, ctx.Err()
                 },

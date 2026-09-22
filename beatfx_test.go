@@ -27,7 +27,7 @@ type ran struct {
 
 func newRan() *ran { return &ran{ch: make(chan struct{})} }
 
-func (r *ran) work(context.Context) (int, error) {
+func (r *ran) work(context.Context) (int64, error) {
 	r.once.Do(func() { close(r.ch) })
 
 	return 0, nil
@@ -85,7 +85,7 @@ func TestModule_HandlerIsOptional(t *testing.T) {
 	app := fxtest.New(
 		t,
 		fx.Supply(beat.Config{Period: time.Second}),
-		fx.Provide(func() *job.Runner { return runnerFor(t, func(context.Context) (int, error) { return 0, nil }) }),
+		fx.Provide(func() *job.Runner { return runnerFor(t, func(context.Context) (int64, error) { return 0, nil }) }),
 		beatfx.Module(),
 	)
 	app.RequireStart()
@@ -171,7 +171,7 @@ func TestModule_SuppliedOptionsReachModule(t *testing.T) {
 	app := fxtest.New(
 		t,
 		fx.Supply(beat.Config{Period: time.Second}),
-		fx.Provide(func() *job.Runner { return runnerFor(t, func(context.Context) (int, error) { return 0, nil }) }),
+		fx.Provide(func() *job.Runner { return runnerFor(t, func(context.Context) (int64, error) { return 0, nil }) }),
 
 		fx.Supply(beatfx.Options{
 			beat.WithOnStart(func(context.Context) error {

@@ -21,7 +21,7 @@ func ExampleModule() {
 		fx.Provide(func(log *slog.Logger) (*job.Runner, error) {
 			return job.MakeRunner(
 				job.Config{Timeout: 45 * time.Second},
-				func(ctx context.Context) (int, error) { return 0, ctx.Err() },
+				func(ctx context.Context) (int64, error) { return 0, ctx.Err() },
 				job.WithMiddleware(recovery.Middleware(recovery.WithLogger(log))),
 			)
 		}),
