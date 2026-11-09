@@ -11,8 +11,9 @@ import (
 	"go.uber.org/fx/fxtest"
 
 	"github.com/uchaloop/beat"
+	"github.com/uchaloop/beat/job"
 	"github.com/uchaloop/beatfx"
-	"github.com/uchaloop/job"
+	"github.com/uchaloop/beatfx/jobfx"
 )
 
 // testPeriod keeps a run close enough to the start of the app that a test does
@@ -25,7 +26,7 @@ type ran struct {
 	once sync.Once
 }
 
-func newRan() *ran { return &ran{ch: make(chan struct{})} }
+func makeRan() *ran { return &ran{ch: make(chan struct{})} }
 
 func (r *ran) work(context.Context) (int64, error) {
 	r.once.Do(func() { close(r.ch) })
@@ -63,7 +64,7 @@ func countingHandler(c *atomic.Int64) beat.Handler {
 // path the predecessor library got wrong (it supplied the config by value but
 // consumed a pointer, so the graph never built).
 func TestModule_StartsBeat(t *testing.T) {
-	r := newRan()
+	r := makeRan()
 
 	app := fxtest.New(
 		t,
@@ -100,7 +101,7 @@ func TestModule_HandlerIsOptional(t *testing.T) {
 func TestModule_OptionsOverrideStatic(t *testing.T) {
 	var static, fromContainer atomic.Int64
 
-	r := newRan()
+	r := makeRan()
 
 	app := fxtest.New(
 		t,
@@ -133,7 +134,7 @@ func TestModule_OptionsOverrideStatic(t *testing.T) {
 func TestModule_LastWriteWins(t *testing.T) {
 	var first, second atomic.Int64
 
-	r := newRan()
+	r := makeRan()
 
 	app := fxtest.New(
 		t,
@@ -189,4 +190,59 @@ func TestModule_SuppliedOptionsReachModule(t *testing.T) {
 		t.Error("the supplied options never reached the Beat")
 	}
 	app.RequireStop()
+}
+
+// TestModule_JobfxRunner verifies both adapters share the same execution type.
+func TestModule_JobfxRunner(t *testing.T) {
+	records := make(chan beat.Record, 1)
+	app := fxtest.New(t,
+		fx.Supply(beat.Config{Period: testPeriod}),
+		fx.Supply(job.Config{Timeout: time.Second}),
+		fx.Provide(func() job.Func {
+			return func(context.Context) (int64, error) { return 7, nil }
+		}),
+		fx.Supply(fx.Annotate(beat.HandlerFunc(func(_ context.Context, record beat.Record) {
+			select {
+			case records <- record:
+			default:
+			}
+		}), fx.As(new(beat.Handler)))),
+		jobfx.Module(),
+		beatfx.Module(),
+	)
+	app.RequireStart()
+	defer app.RequireStop()
+	select {
+	case record := <-records:
+		if record.Result.Outcome != job.OutcomeOK || record.Result.Processed != 7 {
+			t.Fatalf("unexpected result: %+v", record.Result)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("scheduler did not run the jobfx runner")
+	}
+}
+
+func TestModule_CopiesOptions(t *testing.T) {
+	var got string
+	options := []beat.Option{beat.WithOnStart(func(context.Context) error {
+		got = "original"
+		return nil
+	})}
+	module := beatfx.Module(options...)
+	options[0] = beat.WithOnStart(func(context.Context) error {
+		got = "replacement"
+		return nil
+	})
+	app := fxtest.New(t,
+		fx.Supply(beat.Config{Period: time.Hour}),
+		fx.Provide(func() *job.Runner {
+			return runnerFor(t, func(context.Context) (int64, error) { return 0, nil })
+		}),
+		module,
+	)
+	app.RequireStart()
+	defer app.RequireStop()
+	if got != "original" {
+		t.Fatalf("hook = %q, want original", got)
+	}
 }

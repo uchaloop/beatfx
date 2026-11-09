@@ -1,10 +1,9 @@
 module github.com/uchaloop/beatfx
 
-go 1.27
+go 1.27.0
 
 require (
-	github.com/uchaloop/beat v0.7.1
-	github.com/uchaloop/job v0.3.1
+	github.com/uchaloop/beat v0.8.0
 	go.uber.org/fx v1.24.0
 )
 

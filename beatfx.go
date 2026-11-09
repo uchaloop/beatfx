@@ -10,9 +10,10 @@ package beatfx
 
 import (
 	"context"
+	"slices"
 
 	"github.com/uchaloop/beat"
-	"github.com/uchaloop/job"
+	"github.com/uchaloop/beat/job"
 	"go.uber.org/fx"
 )
 
@@ -41,8 +42,11 @@ type params struct {
 }
 
 // Module provides a private Beat and registers its Start and Stop hooks.
-// Static opts are applied before the optional container-provided Options.
+// Static opts are copied and applied before container-provided Options.
+// Referenced option state remains shared.
 func Module(opts ...beat.Option) fx.Option {
+	opts = slices.Clone(opts)
+
 	return fx.Module(
 		"beat",
 
@@ -85,7 +89,7 @@ func Module(opts ...beat.Option) fx.Option {
 func register(lc fx.Lifecycle, b *beat.Beat, shutdowner fx.Shutdowner) {
 	// Closed before Stop, so the watcher can tell an ordinary shutdown from a
 	// loop that ended by itself.
-	stopping := make(chan struct{})
+	stopRequested := make(chan struct{})
 
 	lc.Append(
 		fx.Hook{
@@ -94,13 +98,13 @@ func register(lc fx.Lifecycle, b *beat.Beat, shutdowner fx.Shutdowner) {
 					return err
 				}
 
-				go watchLoop(b.Done(), stopping, shutdowner)
+				go watchLoop(b.Done(), stopRequested, shutdowner)
 
 				return nil
 			},
 
 			OnStop: func(ctx context.Context) error {
-				close(stopping)
+				close(stopRequested)
 
 				return b.Stop(ctx)
 			},
@@ -108,15 +112,15 @@ func register(lc fx.Lifecycle, b *beat.Beat, shutdowner fx.Shutdowner) {
 	)
 }
 
-func watchLoop(done, stopping <-chan struct{}, shutdowner fx.Shutdowner) {
+func watchLoop(done, stopRequested <-chan struct{}, shutdowner fx.Shutdowner) {
 	select {
-	case <-stopping:
+	case <-stopRequested:
 		return
 	case <-done:
 	}
 
 	select {
-	case <-stopping:
+	case <-stopRequested:
 		// An ordinary shutdown asked for this; Fx is already on its way out.
 	default:
 		// The code states the reason for anyone reading fx.App.Wait; the loop's
