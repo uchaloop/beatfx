@@ -28,12 +28,12 @@ func (f *fakeShutdowner) Shutdown(opts ...fx.ShutdownOption) error {
 // a scheduler whose loop has left has nothing further to do, and leaving the
 // process up would hide the failure.
 func TestWatchLoop_ShutsDownWhenTheLoopEndsByItself(t *testing.T) {
-	done, stopping := make(chan struct{}), make(chan struct{})
+	done, stopRequested := make(chan struct{}), make(chan struct{})
 	var shutdowner fakeShutdowner
 
 	finished := make(chan struct{})
 	go func() {
-		watchLoop(done, stopping, &shutdowner)
+		watchLoop(done, stopRequested, &shutdowner)
 		close(finished)
 	}()
 
@@ -49,20 +49,20 @@ func TestWatchLoop_ShutsDownWhenTheLoopEndsByItself(t *testing.T) {
 	}
 }
 
-// The ordinary path closes stopping before Stop, so the Done that follows must
+// The ordinary path closes stopRequested before Stop, so the Done that follows must
 // not be read as a failure. A false shutdown here would be worse than a missing
 // one: it would fire on every clean stop.
 func TestWatchLoop_QuietOnAnOrdinaryShutdown(t *testing.T) {
-	done, stopping := make(chan struct{}), make(chan struct{})
+	done, stopRequested := make(chan struct{}), make(chan struct{})
 	var shutdowner fakeShutdowner
 
 	finished := make(chan struct{})
 	go func() {
-		watchLoop(done, stopping, &shutdowner)
+		watchLoop(done, stopRequested, &shutdowner)
 		close(finished)
 	}()
 
-	close(stopping)
+	close(stopRequested)
 	close(done)
 	<-finished
 
@@ -74,13 +74,13 @@ func TestWatchLoop_QuietOnAnOrdinaryShutdown(t *testing.T) {
 // Both notifications arriving together still count as an ordinary shutdown:
 // Fx is already on its way out, so asking again would add nothing.
 func TestWatchLoop_StoppingWinsWhenBothAreReady(t *testing.T) {
-	done, stopping := make(chan struct{}), make(chan struct{})
+	done, stopRequested := make(chan struct{}), make(chan struct{})
 	var shutdowner fakeShutdowner
 
-	close(stopping)
+	close(stopRequested)
 	close(done)
 
-	watchLoop(done, stopping, &shutdowner)
+	watchLoop(done, stopRequested, &shutdowner)
 
 	// Whichever branch the select took, at most one request may follow.
 	if n := shutdowner.calls.Load(); n > 1 {
@@ -90,21 +90,21 @@ func TestWatchLoop_StoppingWinsWhenBothAreReady(t *testing.T) {
 
 // The watcher must not outlive the application when the loop never ends.
 func TestWatchLoop_ReturnsOnStopping(t *testing.T) {
-	done, stopping := make(chan struct{}), make(chan struct{})
+	done, stopRequested := make(chan struct{}), make(chan struct{})
 	var shutdowner fakeShutdowner
 
 	finished := make(chan struct{})
 	go func() {
-		watchLoop(done, stopping, &shutdowner)
+		watchLoop(done, stopRequested, &shutdowner)
 		close(finished)
 	}()
 
-	close(stopping)
+	close(stopRequested)
 
 	select {
 	case <-finished:
 	case <-time.After(2 * time.Second):
-		t.Fatal("the watcher did not return after stopping")
+		t.Fatal("the watcher did not return after stopRequested")
 	}
 }
 

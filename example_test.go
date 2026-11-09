@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/uchaloop/beat"
+	"github.com/uchaloop/beat/job"
+	"github.com/uchaloop/beat/job/middleware/recovery"
 	"github.com/uchaloop/beatfx"
-	"github.com/uchaloop/job"
-	"github.com/uchaloop/job/middleware/recovery"
 	"go.uber.org/fx"
 )
 
@@ -22,7 +22,7 @@ func ExampleModule() {
 			return job.MakeRunner(
 				job.Config{Timeout: 45 * time.Second},
 				func(ctx context.Context) (int64, error) { return 0, ctx.Err() },
-				job.WithMiddleware(recovery.Middleware(recovery.WithLogger(log))),
+				job.WithMiddleware(recovery.MakeMiddleware(recovery.WithLogger(log))),
 			)
 		}),
 
